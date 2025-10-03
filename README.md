@@ -76,11 +76,11 @@ If you prefer the official NCBI binary distribution:
 Two ways to use it:
 - Call full path to executables:
   ```bash
-  ./AUTOBridge/ncbi-blast-2.17.0+/bin/blastp -version
+  ./ncbi-blast-2.17.0+/bin/blastp -version
   ```
 - For 2.16.0 version:
   ```bash
-  ./AUTOBridge/ncbi-blast-2.16.0+/bin/blastp -version
+  ./ncbi-blast-2.16.0+/bin/blastp -version
   ```
 - Or add the `bin/` folder to your PATH (recommended):
   - macOS / Linux:
