@@ -70,11 +70,15 @@ python -c "import tkinter; print('tkinter OK')"   # GUI check
 If you prefer the official NCBI binary distribution:
 1. Download the BLAST+ toolkit (2.16.0+ recommended) from:
    https://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/LATEST/
-2. Extract — folder will be named like `ncbi-blast-2.16.0+`.
-3. Place the extracted `ncbi-blast-2.16.0+` folder next to your project (e.g., inside `AUTOBridge/`) or anywhere you like.
+2. Extract — folder will be named like `ncbi-blast-2.17.0+`.
+3. Place the extracted `ncbi-blast-2.17.0+` folder next to your project (e.g., inside `AUTOBridge/`) or anywhere you like.
 
 Two ways to use it:
 - Call full path to executables:
+  ```bash
+  ./AUTOBridge/ncbi-blast-2.17.0+/bin/blastp -version
+  ```
+- For 2.16.0 version:
   ```bash
   ./AUTOBridge/ncbi-blast-2.16.0+/bin/blastp -version
   ```
