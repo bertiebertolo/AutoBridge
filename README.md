@@ -1,5 +1,5 @@
-```markdown
-# AUTOBridge
+
+### AUTOBridge
 
 AUTOBridge is a desktop GUI and CLI toolkit to automate ortholog discovery and BLAST workflows across species. It queries Ensembl/VectorBase for homologies (preferred), and when Ensembl does not provide a clear one‑to‑one ortholog it falls back to a reciprocal-best-hit (RBH) BLAST procedure for higher confidence. AUTOBridge also provides ad-hoc protein and gene BLAST tabs and supports optional automatic proteome download from NCBI (RefSeq preferred).
 
