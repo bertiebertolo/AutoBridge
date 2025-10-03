@@ -1,267 +1,248 @@
-
 ### AUTOBridge
 
-AUTOBridge is a desktop GUI and CLI toolkit to automate ortholog discovery and BLAST workflows across species. It queries Ensembl/VectorBase for homologies (preferred), and when Ensembl does not provide a clear one‑to‑one ortholog it falls back to a reciprocal-best-hit (RBH) BLAST procedure for higher confidence. AUTOBridge also provides ad-hoc protein and gene BLAST tabs and supports optional automatic proteome download from NCBI (RefSeq preferred).
+AUTOBridge is a lightweight desktop GUI and CLI toolkit to map orthologs and run BLAST/RBH workflows across species.  
+It supports two primary data sources for proteomes and orthology information:
 
-Short description
-AUTOBridge — GUI to automatically map orthologs and run BLAST (Ensembl + RBH fallback)
+- Ensembl (preferred for curated homology calls where available)
+- NCBI (datasets / Taxonomy / Assembly FTP) — used for proteome downloads and NCBI-only RBH mapping
 
-Highlights
-- Ensembl homology lookup (fast; prefers curated one‑to‑one orthologs)
-- RBH fallback using BLAST+ for missing/ambiguous cases
-- Protein BLAST (blastp) and Gene BLAST (blastn / tblastn / blastx) GUI tabs
-- Optional automatic proteome download from NCBI (Entrez)
-- Outputs reproducible CSV mappings with provenance and BLAST metrics
-- Minimal dependencies; conda recommended for reproducible installs
+Recommendation: use both resources where possible. Ensembl provides curated orthology for many model organisms; NCBI provides broader assembly coverage (including strains/subspecies) and is used for automatic proteome download + RBH fallback when Ensembl lacks the species or homologies. 
 
-Quick index
-- Installation (conda) — recommended
-- Manual NCBI BLAST+ placement — optional
-- Basic usage (GUI & debug helper)
-- Gene BLAST vs Protein BLAST — which command to use
-- RBH / ortholog mapping details
-- Tips & troubleshooting
 
 ---
 
-## 1) Install (recommended: conda)
+## Highlights (what AUTOBridge does)
+- Prefer Ensembl homology lookups (fast, curated one‑to‑one orthologues).
+- RBH fallback using BLAST+ and a target proteome FASTA when Ensembl lacks a species or a homology.
+- NCBI-first RBH mode: automatically download proteomes from NCBI using the Datasets CLI (recommended) or Entrez fallback, then run Reciprocal Best Hit (RBH) mapping.
+- GUI (Tkinter) that:
+  - suggests species names (NCBI Taxonomy first, Ensembl fallback),
+  - tails autobridge.log for live progress,
+  - exposes options: Ensembl-first, NCBI auto-download, and NCBI-only RBH.
+- Outputs reproducible CSV mappings with provenance and BLAST/orthology metrics.
 
-Recommended single-line (creates env and installs Python packages + BLAST+):
+---
+
+## Table of contents
+1. Requirements
+2. Installation (recommended: conda)
+3. Manual / alternative installs
+4. Verify your environment
+5. Quick start — GUI
+6. Quick start — command line
+7. Input / output formats
+8. How orthology is determined (Ensembl + RBH)
+9. Choosing species & why use both NCBI and Ensembl
+10. Tips & best practices
+11. Troubleshooting
+12. Files in the repository
+13. Contributing & license
+
+---
+
+## 1) Requirements
+- Python 3.8+ (3.10 recommended)
+- BLAST+ executables on PATH: makeblastdb, blastp, tblastn, blastn
+- Network access for Ensembl/NCBI calls and downloads
+- Recommended (not strictly required):
+  - NCBI Datasets CLI (ncbi-datasets-cli) — preferred for robust proteome downloads
+  - Biopython — Entrez fallback and FASTA parsing
+  - requests, tqdm (Python libraries)
+
+---
+
+## 2) Installation (recommended: conda)
+A reproducible conda environment is recommended (bioconda & conda-forge):
+
 ```bash
-conda create -n autobridge -c conda-forge -c bioconda python=3.10 pandas requests biopython blast -y
+# Create environment and add channels (if required)
+conda create -n autobridge -y python=3.10
 conda activate autobridge
+conda config --add channels conda-forge
+conda config --add channels bioconda
+
+# Install executables and Python packages
+conda install -c bioconda blast ncbi-datasets-cli -y
+conda install -c conda-forge biopython requests pandas tqdm -y
 ```
 
-Step-by-step:
-1. Create & activate environment:
+Notes:
+- `blast` (BLAST+) provides makeblastdb, blastp, tblastn, blastn.
+- `ncbi-datasets-cli` is strongly recommended; if absent, AUTOBridge will try an Entrez/FTP fallback but results may be less reliable.
+
+---
+
+## 3) Manual / alternative installs
+- macOS Homebrew:
+  ```bash
+  brew install ncbi-datasets-cli
+  brew install blast
+  pip install biopython requests pandas tqdm
+  ```
+- Official NCBI BLAST binaries:
+  - Download from: https://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/LATEST/
+  - Extract and add `bin/` to PATH.
+- If you cannot install `ncbi-datasets-cli`, ensure Biopython is installed and provide a valid Entrez email in the GUI.
+
+---
+
+## 4) Verify your environment
+Run these commands to confirm essentials:
+
+```bash
+which datasets && datasets --version
+which makeblastdb && makeblastdb -version
+python -c "import Bio,requests,pandas; print('python deps OK')"
+python -c "import tkinter; print('tkinter OK')"
+```
+
+If any command fails, address that dependency before running mapping.
+
+---
+
+## 5) Quick start — GUI
+1. Launch:
    ```bash
-   conda create -n autobridge python=3.10 -y
-   conda activate autobridge
+   python autobridge_gui.py
    ```
-2. Install Python packages:
-   ```bash
-   conda install -c conda-forge pandas requests biopython -y
-   ```
-3. Install BLAST+ (bioconda):
-   ```bash
-   conda install -c bioconda blast -y
-   ```
+2. In the Ortholog Mapping tab:
+   - Input CSV: select CSV with a `GENE_ID` column (one identifier per row).
+   - Output CSV: choose an output path for results.
+   - Source taxon: the species for your input IDs (e.g., `Aedes aegypti`).
+   - Target taxon: the species you want orthologues in (e.g., `Culex pipiens pallens`).
+   - Entrez email: set your contact email (used in Entrez and User-Agent strings).
+   - Options:
+     - "Auto-download from NCBI": allow automatic NCBI proteome downloads if needed.
+     - "Use NCBI RBH (skip Ensembl)": force NCBI-only RBH mapping (useful when Ensembl lacks the target).
+     - "Show progress output": show tqdm/simple progress.
+   - Click "Run Mapping". The GUI will tail `autobridge.log` so you can watch download, makeblastdb and BLAST progress.
 
-If you prefer pip inside conda:
+---
+
+## 6) Quick start — command line
+
+- Ensembl-first (if Ensembl supports both species):
 ```bash
-conda create -n autobridge python=3.10 -y
-conda activate autobridge
-conda install -c conda-forge pip -y
-pip install -r requirements.txt
-conda install -c bioconda blast -y
+python - <<'PY'
+from ensembl_rbh import map_genes
+out,n = map_genes("input.csv","output.csv","you@example.com","culex_quinquefasciatus", show_progress=True)
+print(out,n)
+PY
 ```
 
-Verify:
+- NCBI-only RBH (downloads proteomes and runs RBH):
 ```bash
-python -c "import pandas,requests,Bio; print('python deps OK')"
-which makeblastdb && which blastp && which blastdbcmd
-python -c "import tkinter; print('tkinter OK')"   # GUI check
+python - <<'PY'
+from ensembl_rbh import map_genes_ncbi_rbh
+out,n = map_genes_ncbi_rbh("input.csv","output.csv","you@example.com","Aedes aegypti","Culex pipiens pallens")
+print(out,n)
+PY
 ```
 
----
-
-## 2) Manual BLAST+ installation (optional)
-
-If you prefer the official NCBI binary distribution:
-1. Download the BLAST+ toolkit (2.16.0+ recommended) from:
-   https://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/LATEST/
-2. Extract — folder will be named like `ncbi-blast-2.17.0+`.
-3. Place the extracted `ncbi-blast-2.17.0+` folder next to your project (e.g., inside `AUTOBridge/`) or anywhere you like.
-
-Two ways to use it:
-- Call full path to executables:
-  ```bash
-  ./ncbi-blast-2.17.0+/bin/blastp -version
-  ```
-- For 2.16.0 version:
-  ```bash
-  ./ncbi-blast-2.16.0+/bin/blastp -version
-  ```
-- Or add the `bin/` folder to your PATH (recommended):
-  - macOS / Linux:
-    ```bash
-    export PATH="/full/path/to/ncbi-blast-2.16.0+/bin:$PATH"
-    ```
-    Add that line to `~/.bashrc`/`~/.zshrc` to persist.
-  - Windows (PowerShell temporary):
-    ```powershell
-    $env:Path += ";C:\full\path\to\ncbi-blast-2.16.0+\bin"
-    ```
-    Or add via System > Environment Variables.
-
-If a binary is flagged as untrusted you may need to unblock it:
-- macOS: `xattr -d com.apple.quarantine /path/to/bin/blastp`
-- Linux: `chmod +x /path/to/bin/*`
-- Windows: Properties → Unblock or run as Admin
-
-Note: using conda/bioconda is simpler because BLAST becomes available automatically in the conda env PATH.
+Notes:
+- Always supply a valid Entrez email for polite requests to NCBI and Ensembl.
+- For reproducibility, you can manually download FASTA files and adapt the mapping calls to pass local FASTA paths.
 
 ---
 
-## 3) Basic usage
+## 7) Input / output formats
 
-Start the GUI:
-```bash
-python autobridge_gui.py
+Input CSV:
+- Required column: `GENE_ID` (case-insensitive `gene_id` or `id` accepted).
+- Optional columns `HD`, `JO` are preserved in outputs where relevant.
+
+Example:
+```
+GENE_ID,HD,JO
+AAEL000020,TRUE,FALSE
+AAEL000100,TRUE,FALSE
 ```
 
-Quick debug helper (small check of connectivity and BLAST presence):
-```bash
-python debug_demo.py --gene AAEL000020 --species culex --email you@example.com
-```
-
-Input format for ortholog mapping:
-- CSV with header including at least: `GENE_ID` (AAEL IDs), optional `HD`, `JO`
-- Example row: `AAEL000020,TRUE,FALSE`
-
-Output:
-- CSV with columns:
-  - query_id (AAEL)
-  - target_gene_id (Culex / target species ID found)
-  - method_used (ensembl | rbh | rbh_failed | no_rbh_available | etc.)
-  - orthology_type (from Ensembl if available)
-  - percent_identity (from BLAST if used)
-  - coverage (alignment coverage fraction)
-  - evalue (BLAST evalue)
-  - HD, JO (copied)
-  - note (additional info/errors)
+Output CSV (NCBI-RBH / combined):
+- query_id
+- source_seq_id
+- target_seq_id
+- method_used (ensembl | ncbi_rbh | rbh_low_quality | ensembl_no_rbh, ...)
+- relationship (reciprocal_best_hit, best_hit_only, no_target_hit, no_back_hit, ...)
+- percent_identity
+- coverage
+- evalue
+- note
 
 ---
 
-## 4) Gene BLAST vs Protein BLAST — which to use?
+## 8) How orthology is determined (Ensembl + RBH)
+Default behaviour (per gene):
 
-Yes — BLAST supports both gene (nucleotide) and protein searches. Use the program that matches your data and goals:
+1. Ensembl-first:
+   - Query Ensembl REST /homology for the input gene.
+   - If curated orthologue(s) exist (prefer one-to-one), record them with method_used=`ensembl`.
 
-- blastp (protein → protein)
-  - Use when both query and subject are protein sequences (FASTA of amino acids).
-  - Typical for RBH orthology at protein level.
+2. RBH fallback (if Ensembl lacks homology or if NCBI-only mode selected):
+   - Obtain the query protein sequence:
+     - Prefer local source proteome FASTA (if provided),
+     - Otherwise fetch sequence from Ensembl sequence endpoint or from downloaded source proteome.
+   - BLAST (blastp) the query against the target proteome DB.
+   - If the top hit passes thresholds, retrieve the target sequence and BLAST it back against the source DB.
+   - If reciprocal top hit returns the original query sequence (or matches closely), call it `reciprocal_best_hit`.
 
-- blastn (nucleotide → nucleotide)
-  - Use when both query and subject are nucleotide sequences (DNA/RNA).
-  - Works for comparing gene sequences directly.
+Default thresholds (configurable in code):
+- evalue <= 1e-5
+- percent identity >= 30%
+- coverage >= 0.5 (50% of query)
 
-- tblastn (protein query → translated nucleotide DB)
-  - Use when you have protein queries and the subject DB is nucleotide (genome/transcriptome). BLAST translates the DB in six frames and searches proteins.
-  - Useful to find genes in a genome using a protein query.
-
-- blastx (translated query → protein DB)
-  - Use when query is nucleotide (e.g., transcript) and you want to search a protein DB (the query is translated in six frames).
-
-- tblastx (translated query → translated DB)
-  - Translates both query and DB and compares proteins; heavier and slower, rarely required.
-
-AUTOBridge GUI exposes:
-- Protein BLAST tab (blastp)
-- Gene BLAST tab (blastn / tblastn style — depending on whether subject DB is nucleotide or protein you may choose tblastn)
-
-Example commands:
-```bash
-# make protein DB
-makeblastdb -in culex_proteins.faa -dbtype prot -out culex_db
-
-# run blastp (protein vs protein)
-blastp -query query.faa -db culex_db -outfmt 6 -max_target_seqs 5 -evalue 1e-5 -out blastp_out.tsv
-
-# make nucleotide DB
-makeblastdb -in genome.fa -dbtype nucl -out genome_db
-
-# run tblastn (protein query vs nucleotide DB translated)
-tblastn -query query.faa -db genome_db -outfmt 6 -max_target_seqs 5 -evalue 1e-5 -out tblastn_out.tsv
-
-# blastn (nuc vs nuc)
-blastn -query query.fa -db subject_nuc_db -outfmt 6 -out blastn_out.tsv
-```
+Caveats:
+- RBH is heuristic, not a formal phylogenetic orthology call; curate results for paralogous families.
+- If your input IDs are gene symbols (not present in FASTA headers), a symbol→protein ID mapping step may be required.
 
 ---
 
-## 5) RBH ortholog mapping (how AUTOBridge determines orthologs)
+## 9) Choosing species & why use both NCBI and Ensembl
+- Ensembl: curated orthology for many model organisms; use canonical Ensembl names (e.g. `aedes_aegypti`, `culex_quinquefasciatus`) when relying on Ensembl REST.
+- NCBI: broader assembly coverage (including subspecies/strains). Use free-text taxon names (e.g., `Culex pipiens pallens`) and enable Auto-download to fetch proteomes via NCBI Datasets.
 
-AUTOBridge mapping flow (per input gene):
-1. Try Ensembl homology endpoint (/homology/id/<gene>) — accept curated one-to-one orthologs when available.
-2. If Ensembl returns no clear ortholog:
-   - Obtain the protein sequence for the AAEL gene:
-     - Prefer a local Aedes proteome FASTA (fast).
-     - Or fetch from Ensembl REST (slower).
-   - BLAST the Aedes protein against the target species proteome (blastp).
-   - If top hit passes quality thresholds (defaults: evalue ≤ 1e-5, pct identity ≥ 30%, coverage ≥ 50%), retrieve the subject sequence.
-   - BLAST the subject back against the Aedes proteome (reciprocal blast).
-   - If the reciprocal top hit maps back to the original AAEL ID (or matches closely), call it an RBH and record as an ortholog.
-   - Otherwise mark as ambiguous (record candidates and metrics).
+Recommendation:
+- Try Ensembl-first for genes/species covered by Ensembl. When Ensembl lacks coverage or specific assemblies, enable NCBI Auto-download or run NCBI RBH. Using both improves coverage and reduces missed orthologues.
 
-Default RBH thresholds (configurable in GUI):
-- evalue: 1e-5
-- pct identity: 30%
-- coverage: 50% (fraction of query)
-
-Notes: RBH is a strong heuristic but not a formal phylogenetic orthology inference — combining Ensembl curated calls with RBH gives practical coverage and accuracy.
+Suggested workflow:
+1. Run Ensembl homology for your list (fast and curated).
+2. For genes missing Ensembl homology, run NCBI RBH against a downloaded proteome for your target species.
 
 ---
 
-## 6) Choosing target species in the GUI
-
-- Preferred: use canonical Ensembl species names (lowercase, underscores), e.g.:
-  - `homo_sapiens`, `aedes_aegypti`, `anopheles_gambiae`, `culex_pipiens`
-- Flexible: you can enter a simple substring (e.g., `culex`) and AUTOBridge will substring-match Ensembl species entries.
-- Use the "Suggest species" button in the GUI to query Ensembl's `/info/species` and get canonical names to paste into the species field.
-
----
-
-## 7) Tips & best practices
-
-- Prebuild BLAST DBs for target proteomes and reuse them:
-  ```bash
-  makeblastdb -in culex_proteins.faa -dbtype prot -out culex_db
-  ```
-- For thousands of genes:
-  - Run Ensembl homology in batch first (fast).
-  - Only run RBH for the subset missing clear Ensembl orthologs.
-- Use `-num_threads N` for faster BLAST on multi-core systems (you can add this in code or modify GUI to expose it).
-- Avoid spaces in BLAST filenames/paths.
-- If many paralogs exist, RBH may return paralogous matches — consider further filtering or manual curation for gene families.
+## 10) Tips & best practices
+- Pre-download/store proteome FASTAs and pre-build BLAST DBs if you run repeated analyses.
+- For large jobs, run Ensembl homology in batch first; only RBH the unresolved subset.
+- Use multiple threads in BLAST for speed (modify blast_utils if desired).
+- Avoid spaces in file paths.
+- To debug downloads, set `ncbi_utils` to write to a persistent folder and inspect the extracted contents.
 
 ---
 
-## 8) Troubleshooting
-
-- If `blastp` or `makeblastdb` not found:
-  - Ensure conda env is activated or the NCBI BLAST bin/ is in PATH.
-  - On macOS/Linux check `which blastp`. On Windows use PowerShell `Get-Command blastp`.
-- BLAST flagged as untrusted:
-  - Unblock on Windows; use `chmod +x` on Linux/macOS; on macOS remove quarantine using `xattr -d`.
-- Ensembl rate limits / connectivity:
-  - Include a contact email in User-Agent when calling Ensembl REST.
-  - The scripts include polite sleeps and retry/backoff; you can increase the sleep in GUI settings.
-- If you run into package resolution issues in conda, use `mamba` as a faster solver:
-  ```bash
-  conda install -n base -c conda-forge mamba
-  mamba create -n autobridge -c conda-forge -c bioconda python=3.10 pandas requests biopython blast -y
-  ```
+## 11) Troubleshooting
+- "Failed to download proteome": ensure `datasets` is installed and on PATH (`which datasets`). If unavailable, the Entrez fallback may still work if Biopython is installed and a valid Entrez email is provided.
+- BLAST not found: install BLAST+ and ensure `makeblastdb` and `blastp` are on PATH.
+- Ensembl / NCBI rate-limits: include an email and respect polite sleeps (the code includes sleep between requests).
+- If network/proxy blocks downloads: set HTTP_PROXY/HTTPS_PROXY environment variables or run from a network with access.
 
 ---
 
-## 9) Included helper scripts & files
-- `autobridge_gui.py` — main GUI (Tkinter)
-- `ensembl_rbh.py` — Ensembl + RBH logic
-- `blast_utils.py` — BLAST wrappers
-- `ncbi_utils.py` — optional automatic NCBI proteome download helpers
-- `debug_demo.py` — minimal environment & connectivity check
-- `requirements.txt` — Python package list (pandas, requests, biopython)
+## 12) Files in the repository (where to edit)
+- `autobridge_gui.py` — Tkinter GUI main
+- `ensembl_rbh.py` — mapping logic; includes `map_genes` (Ensembl-first) and `map_genes_ncbi_rbh` (NCBI-only RBH)
+- `ncbi_utils.py` — NCBI download helpers (datasets CLI preferred; Entrez fallback)
+- `blast_utils.py` — BLAST wrappers (make DB, call blastp/tblastn)
+- `debug_demo.py` — small helper for connectivity/BLAST checks
+- `requirements.txt` — Python dependency list (if provided)
+
+Edit these files to adjust RBH thresholds, logging, or to add persistent download options.
 
 ---
 
-## 10) License & contribution
-Add your preferred license and contribution guidelines in `LICENSE` and `CONTRIBUTING.md` as desired. If you want, I can prepare default MIT or Apache-2.0 license files.
+## 13) Contributing & license
+- License: MIT-style by default (add `LICENSE` to the repo to make it explicit).
+- Contributions: open issues or PRs. If you want, maintainers can prepare a PR branch `feature/ncbi-first` containing NCBI-first changes.
 
 ---
-
-If you want, I can:
-- produce a one-line README short description optimized for GitHub's repo description field,
-- add an example input CSV and a small test dataset for quick verification,
-- or prepare a headless CLI wrapper for batch runs on HPC (non-GUI).
 
 ```
